@@ -1,0 +1,25 @@
+# Кэш Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Виртуальные окружения (если есть)
+venv/
+.venv/
+env/
+
+# Логи и временные файлы тестов SoundGrip
+*.log
+*.txt
+crash_log/
+def update preview/
+
+# Бэкапы кода, которые не нужны в финальной сборке
+*_backup.py
+*_test.py
+test_*.py
+repro_*.py
+probe_*.py
+*broken*.py
