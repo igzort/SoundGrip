@@ -1,4 +1,4 @@
-﻿[app]
+[app]
 
 # (str) Title of the application
 title = SoundGrip
