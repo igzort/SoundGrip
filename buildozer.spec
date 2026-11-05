@@ -9,6 +9,13 @@ package.name = soundgrip
 # (str) Package domain (needed for android/ios packaging)
 package.domain = org.soundgrip.game
 
+# (str) Version of the application
+version=0.1
+
+# (str) Version matching your app, alternatives:
+# version.regex = __version__ = ['\"](.*)['\"]
+# version.filename = %(source.dir)s/main.py
+
 # (str) Source code where the main.py lives
 source.dir = .
 
