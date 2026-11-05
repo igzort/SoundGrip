@@ -20,12 +20,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip python3-dev autoconf libtool pkg-config zlib1g-dev libncurses5-dev libssl-dev libgdbm-dev libsqlite3-dev libffi-dev libbz2-dev libreadline-dev
 
-      # Временно убираем кэш проекта, чтобы полностью стереть следы дефектной 37-й версии SDK
+      # Сбрасываем кэш на версию v3, чтобы полностью исключить влияние старых попыток скачать SDK 37
       - name: Cache Buildozer Global Data
         uses: actions/cache@v4
         with:
           path: ~/.buildozer
-          key: ${{ runner.os }}-buildozer-global-v2-${{ hashFiles('buildozer.spec') }}
+          key: ${{ runner.os }}-buildozer-global-v3-${{ hashFiles('buildozer.spec') }}
 
       - name: Run Buildozer in Virtual Environment
         run: |
@@ -34,24 +34,12 @@ jobs:
           source venv/bin/activate
           pip install --upgrade pip
 
-          DOM="github.com"
-          REP="kivy/buildozer.git"
-          pip install git+https://$DOM/$REP
-
+          # Устанавливаем стабильный релиз Buildozer 1.5.0 вместо нестабильного master
+          pip install buildozer==1.5.0
           pip install cython==0.29.33
 
-          # Запускаем предварительную инициализацию, чтобы buildozer скачал структуры каталогов
-          buildozer android debug --accept-sdk-license || true
-
-          # Жёстко и принудительно подписываем абсолютно все лицензии Android SDK через встроенный менеджер
-          if [ -d "$HOME/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin" ]; then
-            yes | $HOME/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
-          elif [ -d "$HOME/.buildozer/android/platform/android-sdk/tools/bin" ]; then
-            yes | $HOME/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager --licenses || true
-          fi
-
-          # Финальный запуск компиляции
-          buildozer android debug
+          # Запуск сборки со стабильными инструментами
+          buildozer android debug --accept-sdk-license
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
