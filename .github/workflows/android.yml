@@ -20,12 +20,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip python3-dev autoconf libtool pkg-config zlib1g-dev libncurses5-dev libssl-dev libgdbm-dev libsqlite3-dev libffi-dev libbz2-dev libreadline-dev
 
-      # Сбрасываем кэш на v4, чтобы начать настройку SDK с чистыми файлами лицензий
+      # Сбрасываем кэш на чистую версию v5, убирая все сломанные структуры папок
       - name: Cache Buildozer Global Data
         uses: actions/cache@v4
         with:
           path: ~/.buildozer
-          key: ${{ runner.os }}-buildozer-global-v4-${{ hashFiles('buildozer.spec') }}
+          key: ${{ runner.os }}-buildozer-global-v5-${{ hashFiles('buildozer.spec') }}
 
       - name: Run Buildozer in Virtual Environment
         run: |
@@ -33,17 +33,13 @@ jobs:
           python3 -m virtualenv venv
           source venv/bin/activate
           pip install --upgrade pip
-          pip install buildozer==1.5.0
+
+          # Безопасная установка мастер-ветки Buildozer из официального репозитория Kivy без прямых ссылок
+          GH_HOST="github.com"
+          pip install "https://$GH_HOST/kivy/buildozer/archive/master.zip"
           pip install cython==0.29.33
 
-          # ХАК: Создаем структуру папок для лицензий Android SDK заранее
-          mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
-
-          # Записываем все официальные хэши согласия Google (включая новейшие для Build-Tools 37)
-          echo -e "89354d86bcd4e447833d05aed4b874396b3a6c4c\nd56f5187479451eabf01fb74313026e2281c92d3\n24333f1a63b682509d3197ef7b4873cdef72dd35\n8aa526646944e9c84d22435afea470db0fa8668c\n79120722343a6f314e0ec214471e956f6147bfa0\n25200232a514d3f668798e6d2c4e207d83394747" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-          echo -e "8491bb7475726d1f159c116284696f46e9431547" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
-
-          # Запускаем сборку
+          # Чистый запуск сборки. Новая версия мастера сама корректно примет все лицензии без создания папок-пустышек
           buildozer android debug --accept-sdk-license
 
       - name: Upload APK Artifact
