@@ -42,15 +42,13 @@ jobs:
           python3 -m virtualenv venv
           source venv/bin/activate
           pip install --upgrade pip
-          pip install buildozer cython==0.29.33
 
-          # Предустановка лицензий Android SDK, чтобы предотвратить запросы (y/N)
-          mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
-          echo -e "\n89354d86bcd4e447833d05aed4b874396b3a6c4c\nd56f5187479451eabf01fb74313026e2281c92d3\n24333f1a63b682509d3197ef7b4873cdef72dd35\n8aa526646944e9c84d22435afea470db0fa8668c" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-          echo -e "\n8491bb7475726d1f159c116284696f46e9431547" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
+          # Ставим последнюю версию Buildozer из репозитория Kivy, где исправлены баги лицензий
+          pip install git+https://github.com
+          pip install cython==0.29.33
 
-          # Запуск сборки
-          buildozer android debug
+          # Запуск чистой сборки с автоматическим принятием лицензий
+          buildozer android debug --accept-sdk-license
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
