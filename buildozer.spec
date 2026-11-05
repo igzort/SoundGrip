@@ -38,7 +38,19 @@ android.permissions = VIBRATE, INTERNET
 android.archs = armeabi-v7a, arm64-v8a
 
 # (int) Android API level to target
-android.api = 33
+android.api=34
+
+# (int) Minimum Android API level supported
+android.minapi=21
+
+# (str) Android SDK version to use
+android.sdk=34
+
+# (str) Android Build-Tools version to use
+android.build_tools_version=34.0.0
+
+# (int) Android NDK API level to target
+android.ndk_api=21
 
 # (str) Android NDK version to use
 # android.ndk = 25b
