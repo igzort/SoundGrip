@@ -20,12 +20,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip python3-dev autoconf libtool pkg-config zlib1g-dev libncurses5-dev libssl-dev libgdbm-dev libsqlite3-dev libffi-dev libbz2-dev libreadline-dev
 
-      # Сбрасываем кэш на версию v3, чтобы полностью исключить влияние старых попыток скачать SDK 37
+      # Сбрасываем кэш на v4, чтобы начать настройку SDK с чистыми файлами лицензий
       - name: Cache Buildozer Global Data
         uses: actions/cache@v4
         with:
           path: ~/.buildozer
-          key: ${{ runner.os }}-buildozer-global-v3-${{ hashFiles('buildozer.spec') }}
+          key: ${{ runner.os }}-buildozer-global-v4-${{ hashFiles('buildozer.spec') }}
 
       - name: Run Buildozer in Virtual Environment
         run: |
@@ -33,12 +33,17 @@ jobs:
           python3 -m virtualenv venv
           source venv/bin/activate
           pip install --upgrade pip
-
-          # Устанавливаем стабильный релиз Buildozer 1.5.0 вместо нестабильного master
           pip install buildozer==1.5.0
           pip install cython==0.29.33
 
-          # Запуск сборки со стабильными инструментами
+          # ХАК: Создаем структуру папок для лицензий Android SDK заранее
+          mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
+
+          # Записываем все официальные хэши согласия Google (включая новейшие для Build-Tools 37)
+          echo -e "89354d86bcd4e447833d05aed4b874396b3a6c4c\nd56f5187479451eabf01fb74313026e2281c92d3\n24333f1a63b682509d3197ef7b4873cdef72dd35\n8aa526646944e9c84d22435afea470db0fa8668c\n79120722343a6f314e0ec214471e956f6147bfa0\n25200232a514d3f668798e6d2c4e207d83394747" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          echo -e "8491bb7475726d1f159c116284696f46e9431547" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
+
+          # Запускаем сборку
           buildozer android debug --accept-sdk-license
 
       - name: Upload APK Artifact
