@@ -38,19 +38,19 @@ jobs:
 
       - name: Run Buildozer in Virtual Environment
         run: |
-          # Устанавливаем virtualenv глобально
           python3 -m pip install --user virtualenv
-
-          # Создаем изолированное окружение 'venv' в корне проекта
           python3 -m virtualenv venv
-
-          # Активируем окружение и ставим чистый buildozer и cython
           source venv/bin/activate
           pip install --upgrade pip
           pip install buildozer cython==0.29.33
 
-          # Запускаем сборку с автоматическим принятием лицензий SDK
-          buildozer android debug --accept-sdk-license
+          # Предустановка лицензий Android SDK, чтобы предотвратить запросы (y/N)
+          mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
+          echo -e "\n89354d86bcd4e447833d05aed4b874396b3a6c4c\nd56f5187479451eabf01fb74313026e2281c92d3\n24333f1a63b682509d3197ef7b4873cdef72dd35\n8aa526646944e9c84d22435afea470db0fa8668c" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          echo -e "\n8491bb7475726d1f159c116284696f46e9431547" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
+
+          # Запуск сборки
+          buildozer android debug
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
