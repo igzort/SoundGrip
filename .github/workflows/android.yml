@@ -22,8 +22,9 @@ jobs:
 
       - name: Install Buildozer and Cython
         run: |
-          python3 -m pip install --upgrade pip --break-system-packages
-          python3 -m pip install buildozer cython virtualenv --break-system-packages
+          pip3 install --user --upgrade pip
+          pip3 install --user buildozer cython virtualenv
+          echo '$HOME/.local/bin' >> $GITHUB_PATH
 
       - name: Build APK with Buildozer
         run: |
