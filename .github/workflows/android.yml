@@ -43,11 +43,12 @@ jobs:
           source venv/bin/activate
           pip install --upgrade pip
 
-          # Ставим последнюю версию Buildozer из репозитория Kivy, где исправлены баги лицензий
-          pip install git+https://github.com
-          pip install cython==0.29.33
+          # Собираем ссылку по кускам из переменных, чтобы обойти баг обрезки текста в ИИ
+          DOM="github.com"
+          REP="kivy/buildozer.git"
+          pip install git+https://$DOM/$REP
 
-          # Запуск чистой сборки с автоматическим принятием лицензий
+          pip install cython==0.29.33
           buildozer android debug --accept-sdk-license
 
       - name: Upload APK Artifact
