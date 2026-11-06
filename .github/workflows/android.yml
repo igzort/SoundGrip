@@ -19,9 +19,9 @@ jobs:
           sudo sh -c 'echo "Acquire::ForceIPv4 \"true\";" > /etc/apt/apt.conf.d/99force-ipv4'
           sudo sh -c 'echo "Acquire::Retries \"3\";" >> /etc/apt/apt.conf.d/99force-ipv4'
           sudo sh -c 'echo "Acquire::http::Timeout \"30\";" >> /etc/apt/apt.conf.d/99force-ipv4'
-          # Переключаем проблемные зеркала Azure на стабильные главные репозитории Ubuntu
-          sudo sed -i 's/azure\.archive\.ubuntu\.com/://ubuntu.com' /etc/apt/sources.list
-          sudo sed -i 's/security\.ubuntu\.com/://ubuntu.com' /etc/apt/sources.list
+          # Исправленный синтаксис sed: переключаем зеркала на стабильный главный репозиторий Ubuntu
+          sudo sed -i 's|http://ubuntu.com|http://ubuntu.com|g' /etc/apt/sources.list
+          sudo sed -i 's|http://ubuntu.com|http://ubuntu.com|g' /etc/apt/sources.list
           sudo apt-get update || true
 
       - name: Install System Dependencies
@@ -49,7 +49,7 @@ jobs:
           pip install --upgrade pip
           
           # Установка Buildozer из мастер-ветки и совместимого Cython
-          pip install "https://github.com"
+          pip install git+https://github.com
           pip install cython==0.29.33
           
           # Автоматическое принятие лицензий Android SDK перед сборкой
@@ -61,7 +61,7 @@ jobs:
       - name: Find and Prepare APK Artifact
         id: locate_apk
         run: |
-          # Безопасный динамический поиск: ищет созданный APK в папке bin/ или глубоко в недрах .buildozer
+          # Динамический поиск: ищет созданный APK в любых папках
           APK_PATH=$(find . -name "*.apk" -type f | head -n 1)
           if [ -z "$APK_PATH" ]; then
             echo "ERROR: APK file not found после сборки!"
