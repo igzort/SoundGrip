@@ -19,7 +19,7 @@ jobs:
           sudo sh -c 'echo "Acquire::ForceIPv4 \"true\";" > /etc/apt/apt.conf.d/99force-ipv4'
           sudo sh -c 'echo "Acquire::Retries \"3\";" >> /etc/apt/apt.conf.d/99force-ipv4'
           sudo sh -c 'echo "Acquire::http::Timeout \"30\";" >> /etc/apt/apt.conf.d/99force-ipv4'
-          # Исправленный синтаксис sed: переключаем зеркала на стабильный главный репозиторий Ubuntu
+          # Полностью исправленная замена зеркал Azure на стабильный главный репозиторий Ubuntu
           sudo sed -i 's|http://ubuntu.com|http://ubuntu.com|g' /etc/apt/sources.list
           sudo sed -i 's|http://ubuntu.com|http://ubuntu.com|g' /etc/apt/sources.list
           sudo apt-get update || true
@@ -48,7 +48,7 @@ jobs:
           source venv/bin/activate
           pip install --upgrade pip
           
-          # Установка Buildozer из мастер-ветки и совместимого Cython
+          # Прямая и чистая установка Buildozer из master-ветки Kivy и совместимого Cython
           pip install git+https://github.com
           pip install cython==0.29.33
           
@@ -61,7 +61,7 @@ jobs:
       - name: Find and Prepare APK Artifact
         id: locate_apk
         run: |
-          # Динамический поиск: ищет созданный APK в любых папках
+          # Динамический поиск: ищет созданный APK в любых папках (в bin/ или глубоко в .buildozer)
           APK_PATH=$(find . -name "*.apk" -type f | head -n 1)
           if [ -z "$APK_PATH" ]; then
             echo "ERROR: APK file not found после сборки!"
