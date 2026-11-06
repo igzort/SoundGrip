@@ -40,11 +40,9 @@ jobs:
           
           buildozer android debug
 
-      # ИСПРАВЛЕННЫЙ ШАГ: Ищем готовый APK-файл везде, где бы его ни сохранил Buildozer
+      # ЖЕЛЕЗОБЕТОННЫЙ ПУТЬ: Забираем файл напрямую из скрытой рабочей папки Buildozer
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: SoundGrip-debug-APK
-          path: |
-            bin/*.apk
-            .buildozer/android/platform/build-*/**/*.apk
+          path: .buildozer/android/platform/build-armeabi-v7a_arm64-v8a/dists/soundgrip/build/outputs/apk/debug/*.apk
