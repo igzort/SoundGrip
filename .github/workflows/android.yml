@@ -18,6 +18,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip python3-dev autoconf libtool pkg-config zlib1g-dev libncurses5-dev libssl-dev libgdbm-dev libsqlite3-dev libffi-dev libbz2-dev libreadline-dev
 
+      - name: Fix Android SDK Paths for Buildozer
+        run: |
+          # ХАК: Buildozer ищет старый путь tools/bin/sdkmanager, которого нет в современном SDK.
+          # Мы берем реальный встроенный sdkmanager из cmdline-tools и делаем для Билдозера фейковый путь tools/bin.
+          mkdir -p /usr/local/lib/android/sdk/tools/bin
+          if [ -f "/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager" ]; then
+            ln -sf /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager /usr/local/lib/android/sdk/tools/bin/sdkmanager
+          fi
+          
+          # Принудительно подписываем все лицензии встроенного SDK, чтобы не было никаких запросов y/N
+          yes | /usr/local/lib/android/sdk/tools/bin/sdkmanager --licenses --sdk_root=/usr/local/lib/android/sdk || true
+
       - name: Run Buildozer
         run: |
           python3 -m pip install --user virtualenv
@@ -25,7 +37,6 @@ jobs:
           source venv/bin/activate
           pip install --upgrade pip
           
-          # Установка стабильного Билдозера из архива, обходящая обрезку ссылок в ИИ
           DOM="github.com"
           REP="kivy/buildozer/archive/master.zip"
           pip install "https://$DOM/$REP"
