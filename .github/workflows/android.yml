@@ -20,14 +20,10 @@ jobs:
 
       - name: Fix Android SDK Paths for Buildozer
         run: |
-          # ХАК: Buildozer ищет старый путь tools/bin/sdkmanager, которого нет в современном SDK.
-          # Мы берем реальный встроенный sdkmanager из cmdline-tools и делаем для Билдозера фейковый путь tools/bin.
           mkdir -p /usr/local/lib/android/sdk/tools/bin
           if [ -f "/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager" ]; then
             ln -sf /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager /usr/local/lib/android/sdk/tools/bin/sdkmanager
           fi
-          
-          # Принудительно подписываем все лицензии встроенного SDK, чтобы не было никаких запросов y/N
           yes | /usr/local/lib/android/sdk/tools/bin/sdkmanager --licenses --sdk_root=/usr/local/lib/android/sdk || true
 
       - name: Run Buildozer
@@ -43,9 +39,12 @@ jobs:
           pip install cython==0.29.33
           
           buildozer android debug
-          
+
+      # ИСПРАВЛЕННЫЙ ШАГ: Ищем готовый APK-файл везде, где бы его ни сохранил Buildozer
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: SoundGrip-debug-APK
-          path: bin/*.apk
+          path: |
+            bin/*.apk
+            .buildozer/android/platform/build-*/**/*.apk
