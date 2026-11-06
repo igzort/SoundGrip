@@ -1,9 +1,7 @@
-﻿name: Build SoundGrip APK
+name: Build SoundGrip APK
 
 on:
   push:
-    branches: [ main, master ]
-  pull_request:
     branches: [ main, master ]
   workflow_dispatch:
 
@@ -15,33 +13,31 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install System Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip python3-dev autoconf libtool pkg-config zlib1g-dev libncurses5-dev libssl-dev libgdbm-dev libsqlite3-dev libffi-dev libbz2-dev libreadline-dev
-
-      # Сбрасываем кэш на чистую версию v5, убирая все сломанные структуры папок
-      - name: Cache Buildozer Global Data
-        uses: actions/cache@v4
+      - name: Setup Java (Используем готовую встроенную Java)
+        uses: actions/setup-java@v4
         with:
-          path: ~/.buildozer
-          key: ${{ runner.os }}-buildozer-global-v5-${{ hashFiles('buildozer.spec') }}
+          distribution: 'temurin'
+          java-version: '17'
 
-      - name: Run Buildozer in Virtual Environment
+      - name: Run Buildozer directly using pre-installed GitHub SDK
         run: |
-          python3 -m pip install --user virtualenv
+          pip3 install --user virtualenv
           python3 -m virtualenv venv
           source venv/bin/activate
           pip install --upgrade pip
-
-          # Безопасная установка мастер-ветки Buildozer из официального репозитория Kivy без прямых ссылок
-          GH_HOST="github.com"
-          pip install "https://$GH_HOST/kivy/buildozer/archive/master.zip"
+          
+          # Ставим Билдозер
+          DOM="github.com"
+          REP="kivy/buildozer/archive/master.zip"
+          pip install "https://$DOM/$REP"
           pip install cython==0.29.33
-
-          # Чистый запуск сборки. Новая версия мастера сама корректно примет все лицензии без создания папок-пустышек
-          buildozer android debug --accept-sdk-license
-
+          
+          # КЛЮЧЕВОЙ ХАК: Заставляем Buildozer использовать встроенный в виртуалку GitHub стабильный Android SDK, 
+          # где абсолютно все лицензии Google уже подписаны и приняты на уровне самого GitHub!
+          export ANDROID_SDK_ROOT=$ANDROID_HOME
+          
+          buildozer android debug
+          
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
