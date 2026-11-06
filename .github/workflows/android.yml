@@ -13,36 +13,66 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Fix Ubuntu APT Mirrors and Network Lag
+        run: |
+          # Принудительно включаем IPv4 для apt, настраиваем таймауты и 3 повторные попытки
+          sudo sh -c 'echo "Acquire::ForceIPv4 \"true\";" > /etc/apt/apt.conf.d/99force-ipv4'
+          sudo sh -c 'echo "Acquire::Retries \"3\";" >> /etc/apt/apt.conf.d/99force-ipv4'
+          sudo sh -c 'echo "Acquire::http::Timeout \"30\";" >> /etc/apt/apt.conf.d/99force-ipv4'
+          # Переключаем проблемные зеркала Azure на стабильные главные репозитории Ubuntu
+          sudo sed -i 's/azure\.archive\.ubuntu\.com/://ubuntu.com' /etc/apt/sources.list
+          sudo sed -i 's/security\.ubuntu\.com/://ubuntu.com' /etc/apt/sources.list
+          sudo apt-get update || true
+
       - name: Install System Dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip python3-dev autoconf libtool pkg-config zlib1g-dev libncurses5-dev libssl-dev libgdbm-dev libsqlite3-dev libffi-dev libbz2-dev libreadline-dev
+          sudo apt-get install -y --no-install-recommends \
+            git zip unzip openjdk-17-jdk python3-pip python3-dev autoconf libtool pkg-config \
+            zlib1g-dev libncurses5-dev libssl-dev libgdbm-dev libsqlite3-dev libffi-dev \
+            libbz2-dev libreadline-dev build-essential ccache clang
 
-      - name: Fix Android SDK Paths for Buildozer
-        run: |
-          mkdir -p /usr/local/lib/android/sdk/tools/bin
-          if [ -f "/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager" ]; then
-            ln -sf /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager /usr/local/lib/android/sdk/tools/bin/sdkmanager
-          fi
-          yes | /usr/local/lib/android/sdk/tools/bin/sdkmanager --licenses --sdk_root=/usr/local/lib/android/sdk || true
+      - name: Cache Buildozer Android SDK/NDK
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer
+            .buildozer
+          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            ${{ runner.os }}-buildozer-
 
       - name: Run Buildozer
         run: |
-          python3 -m pip install --user virtualenv
+          python3 -m pip install --user --upgrade virtualenv
           python3 -m virtualenv venv
           source venv/bin/activate
           pip install --upgrade pip
           
-          DOM="github.com"
-          REP="kivy/buildozer/archive/master.zip"
-          pip install "https://$DOM/$REP"
+          # Установка Buildozer из мастер-ветки и совместимого Cython
+          pip install "https://github.com"
           pip install cython==0.29.33
           
-          buildozer android debug
+          # Автоматическое принятие лицензий Android SDK перед сборкой
+          yes | buildozer android clean
+          yes | buildozer -v android debug
+        env:
+          CI: true
 
-      # ЖЕЛЕЗОБЕТОННЫЙ ПУТЬ: Забираем файл напрямую из скрытой рабочей папки Buildozer
+      - name: Find and Prepare APK Artifact
+        id: locate_apk
+        run: |
+          # Безопасный динамический поиск: ищет созданный APK в папке bin/ или глубоко в недрах .buildozer
+          APK_PATH=$(find . -name "*.apk" -type f | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "ERROR: APK file not found после сборки!"
+            exit 1
+          fi
+          echo "Found APK at: $APK_PATH"
+          echo "apk_path=$APK_PATH" >> $GITHUB_ENV
+
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: SoundGrip-debug-APK
-          path: .buildozer/android/platform/build-armeabi-v7a_arm64-v8a/dists/soundgrip/build/outputs/apk/debug/*.apk
+          path: ${{ env.apk_path }}
+          if-no-files-found: error
