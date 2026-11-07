@@ -57,7 +57,10 @@ jobs:
           
           pip install cython==0.29.33
           
-          # Запуск сборки напрямую (без вызова clean, вызывавшего краш)
+          # Жестко заставляем использовать локальный путь домашней директории вместо /usr/local/lib
+          export ANDROID_SDK_ROOT="$HOME/.buildozer/android/platform/android-sdk"
+          export ANDROID_NDK_ROOT="$HOME/.buildozer/android/platform/android-ndk"
+          
           yes | buildozer -v android debug
         env:
           CI: true
