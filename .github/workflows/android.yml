@@ -57,8 +57,7 @@ jobs:
           
           pip install cython==0.29.33
           
-          # Автоматическое принятие лицензий Android SDK перед сборкой
-          yes | buildozer android clean
+          # Запуск сборки напрямую (без вызова clean, вызывавшего краш)
           yes | buildozer -v android debug
         env:
           CI: true
