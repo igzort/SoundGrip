@@ -44,6 +44,12 @@ jobs:
             ${{ runner.os }}-buildozer-
 
       - name: Run Buildozer
+        # Переопределяем системные переменные на уровне шага GitHub Actions, обнуляя дефолты
+        env:
+          CI: true
+          ANDROID_SDK_ROOT: ""
+          ANDROID_HOME: ""
+          ANDROID_NDK_HOME: ""
         run: |
           python3 -m pip install --user --upgrade virtualenv
           python3 -m virtualenv venv
@@ -57,13 +63,8 @@ jobs:
           
           pip install cython==0.29.33
           
-          # Жестко заставляем использовать локальный путь домашней директории вместо /usr/local/lib
-          export ANDROID_SDK_ROOT="$HOME/.buildozer/android/platform/android-sdk"
-          export ANDROID_NDK_ROOT="$HOME/.buildozer/android/platform/android-ndk"
-          
+          # Запуск сборки
           yes | buildozer -v android debug
-        env:
-          CI: true
 
       - name: Find and Prepare APK Artifact
         id: locate_apk
