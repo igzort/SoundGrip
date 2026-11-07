@@ -44,12 +44,8 @@ jobs:
             ${{ runner.os }}-buildozer-
 
       - name: Run Buildozer
-        # Переопределяем системные переменные на уровне шага GitHub Actions, обнуляя дефолты
         env:
           CI: true
-          ANDROID_SDK_ROOT: ""
-          ANDROID_HOME: ""
-          ANDROID_NDK_HOME: ""
         run: |
           python3 -m pip install --user --upgrade virtualenv
           python3 -m virtualenv venv
@@ -63,6 +59,13 @@ jobs:
           
           pip install cython==0.29.33
           
+          # Жесткая перезапись путей внутри buildozer.spec, чтобы полностью изолировать сборку
+          # Убираем возможные закомментированные строки и вставляем точные локальные пути
+          sed -i 's|#android.sdk_path =|android.sdk_path = /home/runner/.buildozer/android/platform/android-sdk|g' buildozer.spec
+          sed -i 's|#android.ndk_path =|android.ndk_path = /home/runner/.buildozer/android/platform/android-ndk|g' buildozer.spec
+          sed -i 's|android.sdk_path =.*|android.sdk_path = /home/runner/.buildozer/android/platform/android-sdk|g' buildozer.spec
+          sed -i 's|android.ndk_path =.*|android.ndk_path = /home/runner/.buildozer/android/platform/android-ndk|g' buildozer.spec
+
           # Запуск сборки
           yes | buildozer -v android debug
 
