@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """menu.py — стартовое меню SoundGrip.
 
-Пункты (главное меню): Выбор мелодии / Эффекты / Звук / Выход.
-Режимы: main / tracks / effects / sound.
+Пункты (главное меню): Выбор мелодии / Эффекты / Опции / Выход.
+Режимы: main / tracks / effects / options / sound.
+Подменю «Опции» — пункт «Звук» (экран настроек) + «Назад» в главное;
+задел на будущие разделы настроек.
 Управление: мышь (наведение + клик), ↑/↓ — выбор, Enter/Пробел — ок,
 Esc — назад (из подменю в главное, из главного — выход).
 Меню не играет музыку: только вызывает колбэки приложения
@@ -134,6 +136,7 @@ class MenuItem(Widget):
 
 class MenuWidget(FloatLayout):
     """Виджет меню: пункты, ховер, клавиатурная навигация.
+    Режимы: main / tracks / effects / options / sound.
 
     on_play(track)  — старт выбранного трека (track = Track-объект)
     on_exit()       — выход из приложения
@@ -265,6 +268,12 @@ class MenuWidget(FloatLayout):
             ]
             self.status = 'Громкость: %d%%' % round(self.volume * 100)
             self._build_sound_controls()
+        elif self.mode == 'options':
+            self._rows = [
+                ('Звук', self._open_sound, None),
+                ('Назад', self.back, None),
+            ]
+            self.status = 'Опции'
         elif self.mode == 'tracks':
             self._rows = []
             for i, t in enumerate(self.tracks):
@@ -281,7 +290,7 @@ class MenuWidget(FloatLayout):
             self._rows = [
                 ('Выбор мелодии', self._open_tracks, None),
                 ('Эффекты',       self._open_effects, None),
-                ('Звук',          self._open_sound, None),
+                ('Опции',         self._open_options, None),
                 ('Выход',         self.on_exit, None),
             ]
             self.status = self._track_status()
@@ -332,10 +341,7 @@ class MenuWidget(FloatLayout):
         # (через колбэк, не через прямой доступ к self._game).
         active_kind = next((k for k in FX_KINDS if self._fx_active.get(k, False)),
                            FX_KINDS[0])
-        try:
-            self.on_effects(active_kind)
-        except Exception:
-            pass
+        self.on_effects(active_kind)
 
     def show_effects(self, kind='both'):
         """Вызывается из main.py start_effects после показа демо-поля."""
@@ -348,6 +354,13 @@ class MenuWidget(FloatLayout):
     def _open_sound(self):
         self.mode = 'sound'
         self.status = 'Громкость: %d%%' % round(self.volume * 100)
+        self._sel = 0
+        self.rebuild()
+
+    def _open_options(self):
+        """Войти в подменю «Опции»: пункт «Звук» + кнопка «Назад»."""
+        self.mode = 'options'
+        self.status = 'Опции'
         self._sel = 0
         self.rebuild()
 
@@ -435,15 +448,9 @@ class MenuWidget(FloatLayout):
         self.add_widget(self.vib_switch)
 
     def _on_volume_slider(self, instance, value):
-        """Слайдер громкости: pygame.mixer.music.set_volume + колбэк приложения."""
+        """Слайдер громкости: колбэк приложения (звук управляется через Kivy Sound)."""
         vol = max(0.0, min(1.0, float(value)))
         self.volume = vol
-        try:
-            from pygame import mixer
-            if mixer.get_init():
-                mixer.music.set_volume(vol)
-        except Exception:
-            pass
         try:
             self.on_volume(vol)
         except Exception:
@@ -467,10 +474,7 @@ class MenuWidget(FloatLayout):
         for k in FX_KINDS:
             self._fx_active[k] = (k == kind)
         self.rebuild()
-        try:
-            self.on_effects(kind)
-        except Exception:
-            pass
+        self.on_effects(kind)
 
     def set_game(self, game):
         """No-op: меню НЕ хранит ссылку на игру — не спавнит объекты."""

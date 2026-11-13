@@ -48,13 +48,24 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.label import Label
+from kivy.uix.slider import Slider
+from kivy.uix.switch import Switch
 from kivy.uix.widget import Widget
-from kivy.utils import platform as KIVY_PLATFORM
-
 from effects import (ParticleFx, SHAPE_CUBE_WIRE,
                      SHAPE_GENESIS_STAR, SHAPE_WATER, STAR_CUSTOM, WATER)
 from menu import MenuWidget, COL_NEON_CYAN
 import tracks as tracklib
+
+# --- аудио-провайдеры -----------------------------------------------------------
+# SDL2 (встроен) НЕ поддерживает seek() для mp3 — это известное ограничение Kivy
+# (см. https://github.com/kivy/kivy/issues/4139, статус "Not Planned").
+# fffpyplayer поддерживает seek для mp3, но требует установки пакета ffpyplayer
+# (и добавления в buildozer.spec для Android APK).
+try:                                   # noqa: WPS433
+    from kivy.core.audio.audio_ffpyplayer import SoundFFPy  # noqa: F401
+    _FFPY_AVAILABLE = True
+except Exception:                      # noqa: BLE001, WPS433
+    _FFPY_AVAILABLE = False
 
 # --- служебные пути ----------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -885,7 +896,8 @@ class PauseMenu(FloatLayout):
 
     def __init__(self, on_resume=None, on_settings=None, on_main_menu=None,
                  on_quit=None, on_volume_delta=None, on_volume_get=None,
-                 **kwargs):
+                 on_volume_set=None, on_vibration_get=None,
+                 on_vibration_set=None, **kwargs):
         super().__init__(**kwargs)
         self.on_resume = on_resume
         self.on_settings = on_settings
@@ -893,6 +905,9 @@ class PauseMenu(FloatLayout):
         self.on_quit = on_quit
         self._on_volume_delta = on_volume_delta or (lambda _d: None)
         self._on_volume_get = on_volume_get or (lambda: 0.8)
+        self._on_volume_set = on_volume_set or (lambda _v: None)
+        self._on_vibration_get = on_vibration_get or (lambda: True)
+        self._on_vibration_set = on_vibration_set or (lambda _a: None)
         self._vol_lbl = None
         self.size_hint = (1, 1)          # ВЕСЬ экран = слой затемнения
 
@@ -992,6 +1007,77 @@ class PauseMenu(FloatLayout):
             self._vol_lbl.text = 'ГРОМКОСТЬ: %d%%' % round(
                 self._on_volume_get() * 100)
 
+    def show_sound(self):
+        """Слой 2: <Звук> поверх паузы — слайдер громкости, %, вибрация, Назад.
+
+        Выглядит и работает как экран «Звук» из главного меню (интерактивный
+        Slider, процент громкости, переключатель Вибрация: ON/OFF; без
+        грубых кнопок +/-).
+        """
+        self._panel.clear_widgets()
+        vol = max(0.0, min(1.0, float(self._on_volume_get())))
+
+        # контент, центрированный на плашке паузы (как экран «Звук» в меню)
+        content = FloatLayout(size_hint=(1, 1))
+
+        self._vol_lbl = Label(
+            text='ГРОМКОСТЬ: %d%%' % round(vol * 100),
+            size_hint=(1, None), height=64,
+            font_size=32, bold=True, italic=True,
+            color=COL_NEON_CYAN,
+            pos_hint={'center_x': 0.5, 'center_y': 0.72},
+        )
+        content.add_widget(self._vol_lbl)
+
+        slider = Slider(
+            min=0, max=1, value=vol,
+            size_hint=(0.85, None), height=44,
+            pos_hint={'center_x': 0.5, 'center_y': 0.63},
+        )
+
+        def _on_slider(_instance, value):
+            v = max(0.0, min(1.0, float(value)))
+            try:
+                self._on_volume_set(v)
+            except Exception:  # noqa: BLE001
+                pass
+            if self._vol_lbl is not None:
+                self._vol_lbl.text = 'ГРОМКОСТЬ: %d%%' % round(v * 100)
+
+        slider.bind(value=_on_slider)
+        content.add_widget(slider)
+
+        vib_enabled = bool(self._on_vibration_get())
+        self._vib_lbl = Label(
+            text='Вибрация: %s' % ('ON' if vib_enabled else 'OFF'),
+            font_size=18, size_hint=(None, None), size=(220, 28),
+            color=COL_NEON_CYAN,
+            pos_hint={'center_x': 0.5, 'center_y': 0.50},
+        )
+        content.add_widget(self._vib_lbl)
+
+        def _on_vib(_instance, active):
+            try:
+                self._on_vibration_set(bool(active))
+            except Exception:  # noqa: BLE001
+                pass
+            if self._vib_lbl is not None:
+                self._vib_lbl.text = 'Вибрация: %s' % ('ON' if active else 'OFF')
+
+        vib_switch = Switch(
+            active=vib_enabled,
+            size_hint=(None, None), size=(66, 34),
+            pos_hint={'center_x': 0.5, 'center_y': 0.42},
+        )
+        vib_switch.bind(active=_on_vib)
+        content.add_widget(vib_switch)
+
+        btn_back = self._mk('<- НАЗАД', self.show_main)
+        btn_back.size_hint = (0.7, None)
+        btn_back.pos_hint = {'center_x': 0.5, 'y': 0.10}
+        content.add_widget(btn_back)
+
+        self._panel.add_widget(content)
 
 class GameWidget(FloatLayout):
     """Игровое поле: кик-ноты из JSON, тап, сферы Genesis, HUD."""
@@ -1025,7 +1111,7 @@ class GameWidget(FloatLayout):
         self.level_notes = []                         # notas с полем "tick"
         self._sound = None
         self._song_path = None          # путь трека для ПОЛНОЙ перезагрузки
-        self._use_pygame = False        # ПК: пауза через pygame-mixer
+        self._seek_supported = False    # поддерживает ли текущий провайдер seek()
         self.real_duration = 0.0        # реальная длина аудиофайла с диска (с)
         self._resume_sync_t = 0.0       # окно жёсткой синхронизации аудио, с
         self._arm_text = ''             # подсказка <ПОЕХАЛИ...> перед стартом
@@ -1106,76 +1192,88 @@ class GameWidget(FloatLayout):
         self.load_track(track if track is not None
                         else _track_for_map(self.map_name or None))
 
-    # --- аудио-бэкенд: ПК = pygame-mixer (честная пауза), Android = Kivy ------
+    # --- аудио: единый бэкенд Kivy SoundLoader (ПК + Android) ---------------
     def _audio_load(self, path):
-        """Загрузить трек.
+        """Загрузить трек через Kivy SoundLoader.
 
-        ПК (не Android): pygame-mixer -- mixer.music.pause()/unpause()
-        ЗАМОРАЖИВАЕТ позицию внутри движка и продолжает её afterwards,
-        для WAV/MP3/OGG с 100% гарантией (проверено пробой
-        _pyg_pause_probe.py на реальном _bb.wav при живом Kivy-окне).
-        Android или нет pygame: стандартный Kivy SoundLoader.
+        Длительность берём из sound.length, чтобы не доверять битой карте JSON.
+        Определяет, поддерживает ли текущий аудио-провайдер seek()
+        (ffpyplayer — да, SDL2 для mp3 — нет).
         """
         self._song_path = path
-        self._use_pygame = False
-        if path and KIVY_PLATFORM != 'android':
-            try:
-                from pygame import mixer
-                if not mixer.get_init():
-                    mixer.init()
-                mixer.music.load(path)
-                mixer.music.set_volume(self.volume)
-                # Реальная физическая длина аудиофайла с диска (секунды),
-                # чтобы не доверять битой карте JSON.
-                try:
-                    self.real_duration = float(
-                        mixer.Sound(self._song_path).get_length())
-                except Exception:                       # noqa: BLE001
-                    self.real_duration = float(
-                        self.map_data.get('duration') or 0.0)
-                self._use_pygame = True
-                self._sound = None
-                print('[SoundGrip] звук: pygame-mixer -- пауза без потери '
-                      'позиции (%s)' % os.path.basename(path))
-                return
-            except Exception as e:                  # noqa: BLE001
-                print('[SoundGrip] pygame-mixer недоступен (%s) -> '
-                      'Kivy SoundLoader' % e)
         self._sound = SoundLoader.load(path) if path else None
+        self._seek_supported = False
+        if self._sound is not None:
+            # fffpyplayer регистрируется в SoundLoader, поэтому если он
+            # установлен, SoundLoader.load() вернёт SoundFFPy для поддерживаемых
+            # форматов. SDL2 не поддерживает seek для mp3.
+            self._seek_supported = type(self._sound).__name__ == 'SoundFFPy'
+            try:
+                self.real_duration = float(self._sound.length)
+            except Exception:                       # noqa: BLE001
+                self.real_duration = float(
+                    self.map_data.get('duration') or 0.0)
+            self.set_volume(self.volume)
+            prov = type(self._sound).__name__
+            print('[SoundGrip] звук: %s -- (%s)' % (prov, os.path.basename(path)))
+            if not self._seek_supported and path.lower().endswith('.mp3'):
+                print('[WARN] MP3 без fffpyplayer: seek() не перематывает '
+                      '(SDL2 ограничение). При паузе/резюме трек сбросится в 0.0. '
+                      'Решение: установить fffpyplayer или конвертировать трек в WAV.')
+        else:
+            self.real_duration = float(
+                self.map_data.get('duration') or 0.0)
+            print('[SoundGrip] трек не загрузился -- играем по таймеру (без звука)')
 
     def _audio_pause(self):
-        """Пауза БЕЗ потери позиции (pygame) либо stop+unload (Kivy).
-
-        У Kivy SoundSDL2 метода pause() НЕ существует (проверено hasattr
-        на инстансе: только stop/seek/get_pos/state), поэтому Android-ветка
-        вынуждена выгружать буфер, а позицию восстанавливать на резюме.
-        """
-        if self._use_pygame:
-            try:
-                from pygame import mixer
-                mixer.music.pause()
-            except Exception:                       # noqa: BLE001
-                pass
-            return
+        """Пауза: сохраняем позицию и останавливаем звук (без выгрузки из памяти)."""
         if self._sound is not None:
             try:
+                pos = self._sound.get_pos()
+            except Exception:                   # noqa: BLE001
+                pos = 0.0
+            self._paused_pos = pos if (pos and pos > 0.0) else float(self.pause_time)
+            try:
                 self._sound.stop()
-                self._sound.unload()
-            except Exception:                       # noqa: BLE001
+            except Exception:                   # noqa: BLE001
                 pass
+            print(f'[PAUSE] стоп на {self._paused_pos:.2f} сек')
+        else:
+            self._paused_pos = float(self.pause_time)
 
     def _audio_unpause(self):
-        """Продолжить трек с той же секунды. True -- трек продолжает."""
-        if self._use_pygame:
+        """Продолжить трек с той же секунды (без перезагрузки файла с диска)."""
+        if self._song_path is None:
+            return False
+        try:
+            if self._sound is None:
+                self._sound = SoundLoader.load(self._song_path)
+            if self._sound is not None:
+                self.set_volume(self.volume)
+                self._sound.play()
+                # SDL2/Kivy игнорирует seek() в нулевой кадр сразу после play(),
+                # поэтому перемотку откладываем на 120 мс.
+                Clock.schedule_once(
+                    lambda _dt: self._do_seek_after_play(), 0.12)
+            self._resume_sync_t = 2.0
+            return True
+        except Exception:                       # noqa: BLE001
+            return False
+
+    def _do_seek_after_play(self):
+        """Перемотка после инициализации аудио-буфера SDL2/ffpyplayer."""
+        if self._sound is not None:
             try:
-                from pygame import mixer
-                mixer.music.unpause()
-                print('[PAUSE] pygame: unpause -- трек продолжается '
-                      '(позиция замораживалась внутри mixer)')
-                return True
-            except Exception:                       # noqa: BLE001
-                return False
-        return False
+                self._sound.seek(self._paused_pos)
+                self._sound.volume = self.volume
+                fact = self._sound.get_pos()
+                print(f'[RESUME] перемотка на {self._paused_pos:.2f} сек, факт={fact:.2f}')
+                if not self._seek_supported and abs(fact - self._paused_pos) > 0.5:
+                    print('[WARN] Seek не сработал точно (фактически %.2f вместо %.2f). '
+                          'MP3 через SDL2 не поддерживает seek. '
+                          'Установите fffpyplayer или используйте WAV.' % (fact, self._paused_pos))
+            except Exception:                   # noqa: BLE001
+                pass
 
     # --- трек -------------------------------------------------------------------
     def load_track(self, track):
@@ -1264,15 +1362,9 @@ class GameWidget(FloatLayout):
             self._audio_load(song_path)
         except Exception as e:  # noqa: BLE001
             print('[SoundGrip] SoundLoader не смог: %s' % e)
-        else:
-            # Successfully loaded via pygame-mixer -- keep _use_pygame=True
-            # Don't call _audio_load(None) which would reset _use_pygame to False
-            self.real_duration = float(self.map_data.get('duration') or 0.0)
-        if not self._use_pygame and self._sound is None:
+        if self._sound is None:
             print('[SoundGrip] трек не загрузился -- играем по таймеру '
                   '(без звука)')
-        else:
-            self.set_volume(self.volume)
         print('[SoundGrip] трек: %s | нот: %d | %.0f с'
               % (self.track_title, len(self._map_notes),
                  float(self.map_data.get('duration') or 0.0)))
@@ -1280,12 +1372,6 @@ class GameWidget(FloatLayout):
     def set_volume(self, v):
         """Громкость музыки (0..1) -- из пункта меню <Звук> / панели паузы."""
         self.volume = max(0.0, min(1.0, float(v)))
-        if self._use_pygame:
-            try:
-                from pygame import mixer
-                mixer.music.set_volume(self.volume)
-            except Exception:                       # noqa: BLE001
-                pass
         if self._sound is not None:
             try:
                 self._sound.volume = self.volume
@@ -1294,13 +1380,6 @@ class GameWidget(FloatLayout):
 
     def _stop_sound(self):
         """Полная остановка музыки. Ошибки звука не роняют игру."""
-        if self._use_pygame:
-            try:
-                from pygame import mixer
-                mixer.music.stop()
-            except Exception:                       # noqa: BLE001
-                pass
-            return
         if self._sound is not None:
             try:
                 self._sound.stop()
@@ -1358,35 +1437,20 @@ class GameWidget(FloatLayout):
 
     # --- старт / пауза --------------------------------------------------------
     def start_track(self):
+        # Остановить зацикленную музыку меню, если вдруг играла,
+        # чтобы она не накладывалась на игровой трек.
+        try:
+            app = App.get_running_app()
+            if app._menu_sound is not None:
+                app._menu_sound.stop()
+        except Exception:                       # noqa: BLE001
+            pass
+
         if self.state == 'paused':
-            self._paused_pos = self.pause_time
             if self._audio_unpause():
-                # ПК/pygame: позиция всё это время была заморожена внутри
-                # mixer.music -- будим трек, он продолжает с той же секунды
+                # Kivy-ветка: seek выполнен в _audio_unpause,
+                # жёсткая синхронизация в update() подправит позицию
                 pass
-            else:
-                # Android/Kivy-ветка: ТОПОРНЫЙ РЕЗЮМ -- полная перезагрузка
-                # объекта звука (свежий буфер) + play + seek на следующем
-                # кадре (seek работает только когда аудио уже играет и не
-                # в том же кадре)
-                if self._song_path:
-                    try:
-                        if self._sound is not None:
-                            self._sound.unload()
-                        self._sound = SoundLoader.load(self._song_path)
-                        self.set_volume(self.volume)
-                    except Exception:               # noqa: BLE001
-                        pass
-                if self._sound is not None:
-                    try:
-                        self._sound.play()
-                        Clock.schedule_once(
-                            lambda _dt, _s=self._sound:
-                                self._seek_resume(_s), 0)
-                    except Exception:               # noqa: BLE001
-                        pass
-                # окно ЖЁСТКОЙ синхронизации аудио с pause_time в update()
-                self._resume_sync_t = 2.0
             # игровое время/таймер спавна НЕ сбрасываем (_idx/_map_notes
             # не трогаем, стена продолжает от _paused_pos)
             self._perf_start = time.perf_counter()
@@ -1408,13 +1472,7 @@ class GameWidget(FloatLayout):
         self._perf_start = time.perf_counter()
         self.start_timestamp = self._perf_start
         self._paused_pos = 0.0
-        if self._use_pygame:
-            try:
-                from pygame import mixer
-                mixer.music.play()              # свежий трек с начала
-            except Exception:                   # noqa: BLE001
-                pass
-        elif self._sound is not None:
+        if self._sound is not None:
             try:
                 self._sound.play()
             except Exception:                       # noqa: BLE001
@@ -1427,7 +1485,7 @@ class GameWidget(FloatLayout):
             #    источник истины для спавна/хитбоксов
             self.pause_time = float(self.audio_now())
             self._paused_pos = self.pause_time
-            # 2) ПК: pygame-mixer.music.pause() МОРОЗИТ позицию внутри
+            # 2) Kivy Sound.stop() — позицию восстановим на резюме (reload + seek)
             #    движка (WAV/MP3/OGG, 100% гарантия); Android/Kivy:
             #    stop+unload -- позиция восстановится на резюме (reload+seek)
             self._audio_pause()
@@ -1465,7 +1523,11 @@ class GameWidget(FloatLayout):
                 on_main_menu=self._pause_to_main_menu,
                 on_quit=self._pause_quit,
                 on_volume_delta=self._pause_volume_delta,
-                on_volume_get=lambda: self.volume)
+                on_volume_get=lambda: self.volume,
+                on_volume_set=self._pause_volume_set,
+                on_vibration_get=self._pause_vibration_get,
+                on_vibration_set=self._pause_vibration_set,
+            )
         if self._pause_menu.parent is None:
             self.add_widget(self._pause_menu)
 
@@ -1478,6 +1540,36 @@ class GameWidget(FloatLayout):
         """Кнопка «Настройки звука»: открыть слой <Звук> прямо поверх паузы."""
         if self._pause_menu is not None:
             self._pause_menu.show_sound()
+
+    def _pause_volume_set(self, v):
+        """Абсолютная громкость из ползунка звука паузы.
+
+        Через App.set_volume(value) значение попадает в game.set_volume
+        (текущий трек меняется мгновенно) и в self.volume, которое
+        применяется к новому звуку при возобновлении (_audio_unpause).
+        """
+        v = max(0.0, min(1.0, float(v)))
+        try:
+            app = App.get_running_app()
+        except Exception:  # noqa: BLE001
+            app = None
+        if app is not None:
+            app.set_volume(v)
+        else:
+            self.set_volume(v)
+
+    def _pause_vibration_get(self):
+        try:
+            return bool(getattr(App.get_running_app(), 'vibration_enabled', True))
+        except Exception:  # noqa: BLE001
+            return True
+
+    def _pause_vibration_set(self, active):
+        try:
+            app = App.get_running_app()
+        except Exception:  # noqa: BLE001
+            return
+        app.vibration_enabled = bool(active)
 
     def _pause_volume_delta(self, delta):
         """±громкость из панели паузы; синхрон App, чтобы меню <Звук>
@@ -2327,21 +2419,10 @@ class GameWidget(FloatLayout):
         # конец трека: музыка доиграла -> ФИНАЛЬНЫЙ СЧЁТ
         duration = float(self.map_data.get('duration') or 0.0)
         duration = TRACK_DURATION_OVERRIDE.get(self.map_name, duration)
-        # ПК/pygame: финиш ТОЛЬКО если музыка затихла И игровой таймер
-        # превысил реальную длину файла с диска (а не битой карты JSON).
+        # Финиш по времени: игровой таймер превысил длину трека.
         audio_done = False
-        if self._use_pygame:
-            try:
-                from pygame import mixer
-                if (self.state == 'playing' and not mixer.music.get_busy()
-                        and now >= (self.real_duration - 0.5)):
-                    audio_done = True
-            except Exception:                       # noqa: BLE001
-                pass
-        else:
-            # Android/Kivy SoundLoader: нет надёжного get_busy — по времени
-            if duration > 0 and now > duration - 0.5:
-                audio_done = True
+        if duration > 0 and now > duration - 0.5:
+            audio_done = True
         if self.state == 'playing' and duration > 0 and audio_done:
             self.state = 'ended'
             self._finish()
@@ -2580,7 +2661,7 @@ class RhythmSlasherApp(App):
             Window.clearcolor = (0, 0, 0, 1)
         self.volume = 0.8
         self._menu_music_playing = False
-        self._menu_channel = None
+        self._menu_sound = None
         self.tracks = tracklib.list_tracks()
         want = _map_from_argv()
         self.track = next((t for t in self.tracks if t.map_name == want), None)
@@ -2644,6 +2725,7 @@ class RhythmSlasherApp(App):
         """Вернуться в меню (Esc из паузы, конец трека, выход из игры)."""
         self.game.exit_effects()            # убрать демо-витрину, если была
         self.game.stop_playback()
+        self.game._clear_end()              # убрать надписи финиша (счёт, ФИНИШ, …)
         self.game.active = False
         self._play_menu_music()             # музыка меню по кругу
         # Скрыть игровой HUD (очки + бар INCREDIBLE) в меню
@@ -2708,6 +2790,8 @@ class RhythmSlasherApp(App):
         GameWidget показывает вращающуюся демо-фигуру справа. Оба виджета
         лежат в root_w, menu -- последний (поверх), поэтому он сверху.
         """
+        # убрать надписи финиша, если они остались на экране
+        self.game._clear_end()
         # показать поле (витрину) под меню
         if self.game.parent is None:
             self.root_w.add_widget(self.game)
@@ -2739,37 +2823,58 @@ class RhythmSlasherApp(App):
             self.root_w.remove_widget(self.game)
 
     def set_volume(self, v):
-        """Громкость из меню <Звук>."""
+        """Громкость из меню <Звук> — мгновенно применяется к игровому треку
+        и к зацикленной музыке меню (если сейчас играет)."""
         self.volume = max(0.0, min(1.0, float(v)))
         self.game.set_volume(self.volume)
+        if self._menu_sound is not None:
+            try:
+                self._menu_sound.volume = self.volume
+            except Exception:  # noqa: BLE001
+                pass
 
     # --- музыка меню (главное меню + пауза), зацикленная -----------------------
     def _play_menu_music(self):
-        """Запустить трек меню по кругу на отдельном канале (не конфликтует с игровым mixer.music)."""
+        """Запустить трек меню по кругу через Kivy Sound.
+
+        Kivy Sound не поддерживает loops=-1, поэтому зацикливание делаем
+        через привязку к событию on_stop: при остановке трека перезапускаем
+        его заново, если флаг _menu_music_playing всё ещё True.
+        """
         if not os.path.exists(MENU_MUSIC_PATH):
             print('[MENU] трек меню не найден: %s' % MENU_MUSIC_PATH)
             return
         try:
-            from pygame import mixer
-            if not mixer.get_init():
-                mixer.init()
-            self._menu_sound = mixer.Sound(MENU_MUSIC_PATH)
-            self._menu_sound.set_volume(self.volume)
-            self._menu_channel = self._menu_sound.play(loops=-1)  # -1 = бесконечный цикл
+            self._menu_sound = SoundLoader.load(MENU_MUSIC_PATH)
+            if self._menu_sound is None:
+                print('[MENU] не удалось загрузить музыку меню: %s' % MENU_TRACK)
+                return
+            self._menu_sound.volume = self.volume
+            self._menu_sound.bind(on_stop=self._on_menu_music_stop)
+            self._menu_sound.play()
             self._menu_music_playing = True
-            print('[MENU] музыка меню (цикл, отдельный канал): %s' % MENU_TRACK)
+            print('[MENU] музыка меню (цикл, Kivy Sound): %s' % MENU_TRACK)
         except Exception as e:  # noqa: BLE001
             print('[MENU] не удалось запустить музыку меню: %s' % e)
 
+    def _on_menu_music_stop(self, instance):
+        """Перезапуск музыки меню, если она должна играть дальше (зацикливание)."""
+        if self._menu_music_playing and self._menu_sound is not None:
+            try:
+                self._menu_sound.play()
+            except Exception:  # noqa: BLE001
+                pass
+
     def _stop_menu_music(self):
-        """Остановить музыку меню (отдельный канал)."""
+        """Остановить музыку меню."""
+        self._menu_music_playing = False
         try:
-            if getattr(self, '_menu_channel', None) is not None:
-                self._menu_channel.stop()
-                self._menu_channel = None
+            if self._menu_sound is not None:
+                self._menu_sound.stop()
+                self._menu_sound.unbind(on_stop=self._on_menu_music_stop)
+                self._menu_sound = None
         except Exception:  # noqa: BLE001
             pass
-        self._menu_music_playing = False
 
 if __name__ == '__main__':
     try:

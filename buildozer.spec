@@ -23,7 +23,7 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,mp3,wav,glsl,vert,frag
 
 # (list) Requirements
-requirements = python3,kivy==2.3.0,pygame,pillow,kivy_deps.sdl2
+requirements = python3,kivy==2.3.0,pillow,kivy_deps.sdl2
 
 # (str) Supported orientation (one of landscape, portrait, sensor, ...)
 orientation = landscape
